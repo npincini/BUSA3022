@@ -1,0 +1,49 @@
+name: Market data pipeline
+
+on:
+  schedule:
+    # GitHub cron uses UTC. 07:00 UTC on weekdays is 5pm AEST or 6pm AEDT in Sydney, after the ASX close and after the pipeline's 16:30 Sydney cut-off for unfinished bars.
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch:   # adds a "Run workflow" button on the Actions tab for manual runs
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      # A fresh runner starts empty, so restore earlier raw files for the fallback step.
+      - name: Restore earlier raw files
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
+      - name: Run the pipeline notebook
+        run: >
+          jupyter nbconvert --to notebook --execute
+          "BUSA3022_Data_Pipeline_(S&P_ASX_200_+_VIX).ipynb"
+          --output run_output.ipynb --ExecutePreprocessor.timeout=600
+
+      # always() keeps the logs even when the run fails.
+      - name: Keep the curated file and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-outputs-${{ github.run_id }}
+          path: |
+            data/curated
+            logs
+          retention-days: 14
