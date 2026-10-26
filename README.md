@@ -1,6 +1,6 @@
 # BUSA3022 Market Data Pipeline (S&P/ASX 200 + VIX)
 
-A small, repeatable data pipeline that downloads two public data series, validates them, and produces one curated CSV for metric development.
+A small, repeatable data pipeline that downloads two public data series, validates them, and produces one curated CSV for metric development. A sample output zip file can be downloaded.
 
 ---
 
