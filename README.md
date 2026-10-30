@@ -1,6 +1,6 @@
 # BUSA3022 Market Data Pipeline (S&P/ASX 200 + VIX)
 
-A small, repeatable data pipeline that downloads two public data series, validates them, and produces one curated CSV for metric development.
+A small, repeatable data pipeline that downloads two public data series, validates them, and produces one curated CSV (Part 1). The same notebook then calculates metrics and a daily Market Stress Index from that file (Part 2).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/npincini/BUSA3022/blob/main/BUSA3022_Data_Pipeline_%28S%26P_ASX_200_%2B_VIX%29.ipynb)
 
@@ -22,27 +22,28 @@ A small, repeatable data pipeline that downloads two public data series, validat
 | Raw | `data/raw/` | Saved exactly as received. Never edited. Each file is timestamped and recorded in `manifest.csv` |
 | Transform | in the notebook | Reads from the raw files. Nothing is written back to raw. |
 | Curated | `data/curated/` | The single handoff file plus a data dictionary. |
+| Metrics | `data/metrics/` | Part 2 metrics and Market Stress Index, a metrics dictionary and the run settings. Reads the curated file; nothing is written back to it. |
 | Logs | `logs/` | Quality log, quarantine file, and run log for every run. |
 
 ## 3. Quick start on Google Colab
 
 1. Click the **Open in Colab** badge above (or upload the file to Colab).
 2. `Runtime > Run all`.
-3. Download the outputs using the last cell (one zip containing `data/` and `logs/`), or find them in the Colab file browser (folder icon) under `data/` and `logs/`.
+3. Download the outputs using the last cell, Step 13 (one zip containing `data/` and `logs/`, including the metrics), or find them in the Colab file browser (folder icon) under `data/` and `logs/`.
 
 Colab's disk is temporary, so download results before the session ends.
 
 ## 4. Scheduled run on GitHub Actions
 
-The workflow in `.github/workflows/pipeline.yml` runs the notebook on a schedule and on demand. No API keys or secrets are needed.
+The workflow in `.github/workflows/pipeline.yml` runs the whole notebook, so each run produces the Part 1 outputs and the Part 2 metrics, on a schedule and on demand. No API keys or secrets are needed.
 
 | Setting | Value |
 |---|---|
-| Schedule | 07:00 UTC, Monday to Friday (5pm AEST or 6pm AEDT in Sydney). This is after the ASX close and after the 16:30 Sydney cut-off used to quarantine unfinished bars. |
+| Schedule | 07:17 UTC, Monday to Friday (5:17pm AEST or 6:17pm AEDT in Sydney). This is after the ASX close and after the 16:30 Sydney cut-off used to quarantine unfinished bars. |
 | Manual run | Open the **Actions** tab, select **Market data pipeline**, then choose **Run workflow**. |
 | Dependencies | Installed from `requirements.txt`. |
 | Command | `jupyter nbconvert --to notebook --execute "BUSA3022_Data_Pipeline_(S&P_ASX_200_+_VIX).ipynb" --output run_output.ipynb --ExecutePreprocessor.timeout=600` |
-| Outputs | One artefact per run, `pipeline-outputs-<run id>`, containing `data/raw`, `data/curated` and `logs`. Kept for 14 days. |
+| Outputs | One artefact per run, `pipeline-outputs-<run id>`, containing `data/raw`, `data/curated`, `data/metrics` and `logs`. Kept for 14 days. |
 | Fallback files | `data/raw` is cached between runs, so the "reuse the newest earlier raw file" fallback has a file to use. |
 | Failure | The run is marked as failed in the Actions tab. The upload step still runs, so the logs are kept. |
 
@@ -60,6 +61,12 @@ Notes:
 | `data/curated/data_dictionary.csv` | Column definitions (also in section 8). |
 | `data/raw/asx200_yahoo_<run>.csv`, `vix_fred_<run>.csv` | Untouched downloads. |
 | `data/raw/manifest.csv` | Audit trail of every download. |
+| `data/metrics/market_metrics.csv` | Full history with every Part 2 metric and the Market Stress Index. |
+| `data/metrics/market_metrics_<run>.csv` | The same table, kept as a snapshot of the run. |
+| `data/metrics/market_metrics_90_calendar_days.csv` | The latest 90 calendar days, for the dashboard. |
+| `data/metrics/metrics_dictionary.csv` | Plain-language name, unit and method for every metrics column. |
+| `data/metrics/vix_history_for_stress.csv` | The clean VIX history and percentiles used for the VIX component. |
+| `data/metrics/metrics_settings_<run>.json` | The windows, weights, thresholds and conventions used in the run. |
 | `logs/quality_log_<run>.csv` | Every event that happened. |
 | `logs/quarantine_<run>.csv` | Every rejected row with its reason and original contents. Always created, even if empty. |
 | `logs/run_<run>.log` | The same events as readable text (Sydney time). |
@@ -129,7 +136,41 @@ Rows that fail a check are moved to `logs/quarantine_<run>.csv` with a reason co
 | `vix_source_date` | date | The US market date `vix_close` came from. Always earlier than `date`. |
 | `vix_is_filled` | True/False | True when no VIX value existed for the previous weekday before `date`, so the most recent earlier value was used. Otherwise False. |
 
-## 9. How to audit a run
+## 9. Part 2: metrics and Market Stress Index
+
+Steps 6 to 12 of the notebook read `data/curated/market_curated.csv` and add calculated columns. Windows count ASX trading rows, not calendar days. All settings are in the Step 6 cell.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `AVERAGE_DAYS` | 90 | Rolling averages use 90 trading rows |
+| `ROC_DAYS` | 90 | The long-horizon rate of change compares with the row 90 trading rows earlier |
+| `VOLATILITY_DAYS` | 14 | Volatility uses 14 daily returns |
+| `STRESS_WEIGHTS` | P 0.30, A 0.40, V 0.30 | Component weights; must be finite, non-negative and sum to 1 |
+| `STRESS_PERCENTILE_DAYS` | 252 | Each percentile compares a value with the previous 252 valid observations |
+| `STRESS_AVERAGE_DAYS` | 90 | The index's rolling average uses 90 trading rows |
+| `STRESS_AMBER_THRESHOLD`, `STRESS_RED_THRESHOLD` | 50, 75 | Signal thresholds on the 0 to 100 index |
+| `DISPLAY_CALENDAR_DAYS` | 90 | The dashboard file keeps the latest 90 calendar days |
+
+| Column | Definition |
+|---|---|
+| `asx_price_ma_90d`, `asx_volume_ma_90d` | Mean of the current and previous 89 rows. Blank until 90 non-missing values exist |
+| `asx_price_roc_1d_pct`, `asx_volume_roc_1d_pct` | 100 × (value ÷ previous row's value − 1). Blank if the earlier value is zero |
+| `asx_price_roc_90d_pct`, `asx_volume_roc_90d_pct` | The same comparison with the row 90 trading rows earlier |
+| `asx_volatility_14d_pct` | Sample standard deviation (n − 1) of the last 14 daily percentage price returns. Not annualised |
+| `asx_price_weakness_pct` | 100 × (90-day average price − close) ÷ 90-day average price. Negative when price is above its average |
+| `stress_price_percentile` (P), `stress_asx_volatility_percentile` (A), `stress_vix_percentile` (V) | Percentile of price weakness, 14-day volatility and the VIX close, each against its previous 252 valid observations, excluding the current one: 100 × (number below + 0.5 × number equal) ÷ 252 |
+| `market_stress_index` | 0.30 P + 0.40 A + 0.30 V by default. A 0 to 100 score, not a probability. Blank unless all three components exist; missing inputs are never filled or reweighted |
+| `market_stress_index_roc_1d_pct`, `market_stress_index_roc_90d_pct` | Percentage change of the index against the previous row and the row 90 trading rows earlier. A percentage change is not a change in points |
+| `market_stress_index_ma_90d` | Mean of the current and previous 89 index values |
+| `market_stress_signal` | Green below 50, Amber from 50 to below 75, Red at 75 or above. `Insufficient data` when the index is blank |
+
+* **VIX component:** V is ranked against the full clean VIX table (one value per US date) and mapped to each ASX row through `vix_source_date`. This keeps the Part 1 alignment and avoids counting carried-forward values more than once. The history used is saved as `vix_history_for_stress.csv`.
+* **Availability:** with complete data the index first appears at row 342 and its 90-day average at row 431. Earlier rows are blank by design and are kept.
+* **Input checks (Step 7):** the run stops if a required column is missing, dates are missing, repeated or unsorted, a close is not positive, volume is negative, or a VIX source date is not earlier than its ASX date. Missing and zero volume are kept and logged (`MISSING_INPUT_RETAINED`, `ZERO_VOLUME_RETAINED`).
+* **Output checks (Step 11):** the run stops if any original column changed, a calculated value is infinite, a score is outside 0 to 100, or the index does not equal the weighted formula. Success is logged as `METRIC_CHECKS_PASSED`.
+* **Weights and thresholds** are proposed design choices, not validated industry standards. The ASX volatility and VIX components overlap in what they measure. After changing a setting, rerun Steps 6 to 13 so all history is recalculated.
+
+## 10. How to audit a run
 
 1. If the run was on GitHub Actions, open it in the **Actions** tab, confirm it finished green, and download the artefact. Then open `logs/quality_log_<run>.csv` and filter `level` for `WARNING`, `ERROR` and `CRITICAL`.
 2. Check the `ROW_RECONCILIATION` lines. `balanced=True` means every row is accounted for.
@@ -137,8 +178,9 @@ Rows that fail a check are moved to `logs/quarantine_<run>.csv` with a reason co
 4. Check `data/raw/manifest.csv`. `status` should be `ok`. `fallback` means that run used old data.
 5. Compare the SHA-256 in the manifest with the raw file to confirm it has not been edited.
 6. Check `VIX_CARRIED_FORWARD` against the `vix_is_filled` column in the curated file.
+7. Check that `METRIC_CHECKS_PASSED` is in the quality log, and open `data/metrics/metrics_settings_<run>.json` to see the windows, weights and thresholds used.
 
-## 10. References
+## 11. References
 
 * Yahoo Finance data accessed with the `yfinance` Python library (Aroussi, 2017 to present). <https://github.com/ranaroussi/yfinance>
 * Federal Reserve Bank of St. Louis. *CBOE Volatility Index: VIX (VIXCLS)*. FRED. <https://fred.stlouisfed.org/series/VIXCLS>
