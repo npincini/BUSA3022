@@ -2,8 +2,11 @@ name: Market data pipeline
 
 on:
   schedule:
-    # GitHub cron uses UTC. 07:00 UTC on weekdays is 5pm AEST or 6pm AEDT in Sydney, after the ASX close and after the pipeline's 16:30 Sydney cut-off for unfinished bars.
-    - cron: "0 7 * * 1-5"
+    # GitHub cron uses UTC. 07:17 UTC on weekdays is 5:17pm AEST or 6:17pm AEDT in Sydney,
+    # after the ASX close and after the pipeline's 16:30 Sydney cut-off for unfinished bars.
+    # The odd minute is deliberate: GitHub warns that runs can be delayed or dropped at the
+    # start of each hour, when load is highest.
+    - cron: "17 7 * * 1-5"
   workflow_dispatch:   # adds a "Run workflow" button on the Actions tab for manual runs
 
 jobs:
@@ -38,7 +41,7 @@ jobs:
           --output run_output.ipynb --ExecutePreprocessor.timeout=600
 
       # always() keeps the logs even when the run fails.
-      - name: Keep the raw files, curated file and logs
+      - name: Keep the raw, curated and metrics files and the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -46,5 +49,6 @@ jobs:
           path: |
             data/raw
             data/curated
+            data/metrics
             logs
           retention-days: 14
