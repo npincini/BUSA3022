@@ -170,7 +170,36 @@ Steps 6 to 12 of the notebook read `data/curated/market_curated.csv` and add cal
 * **Output checks (Step 11):** the run stops if any original column changed, a calculated value is infinite, a score is outside 0 to 100, or the index does not equal the weighted formula. Success is logged as `METRIC_CHECKS_PASSED`.
 * **Weights and thresholds** are proposed design choices, not validated industry standards. The ASX volatility and VIX components overlap in what they measure. After changing a setting, rerun Steps 6 to 13 so all history is recalculated.
 
-## 10. How to audit a run
+## 10. Part 3: Power BI dashboard
+
+The Part 3 dashboard, **ASX Market Watch**, is saved in this repository as `BUSA3022_VIX_x_ASX_Report.pbix`. It reads the Part 2 metrics file (`market_metrics.csv`) and displays it. It does not recalculate the Part 2 metrics.
+
+**GitHub cannot display Power BI dashboards.** A `.pbix` file is a Power BI project file. GitHub can store it and let you download it, but it cannot open it or show the dashboard in the browser.
+
+### How to view it
+
+1. On GitHub, open `BUSA3022_VIX_x_ASX_Report.pbix` and choose **Download raw file** (the download icon).
+2. Open the file in **Power BI Desktop** (free, Windows only). Mac users need a Windows machine or virtual machine.
+3. Use the date filter (top right) to choose a trading date. Everything on the page updates.
+
+### What the dashboard contains
+
+| Component | What it shows |
+|---|---|
+| Date filter | Any trading date from 10 June 2025, the first date with a full 90-day window including the 90-day average. |
+| Four tiles | The ASX 200's daily price change, its 14-day volatility, the Market Stress Index (0 to 100) and the Red/Amber/Green signal. |
+| Watch note | One plain-English line saying why the signal is Green, Amber or Red, and what is driving it. |
+| Chart 1 | The ASX 200 close with its 90-day average (dashed) and the VIX on a second axis. The title states the message and changes with the date. |
+| Chart 2 | The Market Stress Index against the Amber (50) and Red (75) thresholds. |
+| Panel | How to read the index and signal, including that the weights and thresholds are design choices and have not been validated. |
+
+The index and signal start on 9 March 2026, because the index needs about 16 months of history. For earlier dates the watch note says the signal is not yet available.
+
+### Data and refreshing
+
+The data is embedded in the file, so it opens and works without a connection. It comes from a sample pipeline run (see `Sample Output (30 Oct).zip`). To refresh it with new data, download a newer `market_metrics.csv` from the pipeline's outputs, then in Power BI Desktop choose **Transform data > Data source settings > Change Source** and point it to that file.
+
+## 11. How to audit a run
 
 1. If the run was on GitHub Actions, open it in the **Actions** tab, confirm it finished green, and download the artefact. Then open `logs/quality_log_<run>.csv` and filter `level` for `WARNING`, `ERROR` and `CRITICAL`.
 2. Check the `ROW_RECONCILIATION` lines. `balanced=True` means every row is accounted for.
@@ -180,7 +209,7 @@ Steps 6 to 12 of the notebook read `data/curated/market_curated.csv` and add cal
 6. Check `VIX_CARRIED_FORWARD` against the `vix_is_filled` column in the curated file.
 7. Check that `METRIC_CHECKS_PASSED` is in the quality log, and open `data/metrics/metrics_settings_<run>.json` to see the windows, weights and thresholds used.
 
-## 11. References
+## 12. References
 
 * Yahoo Finance data accessed with the `yfinance` Python library (Aroussi, 2017 to present). <https://github.com/ranaroussi/yfinance>
 * Federal Reserve Bank of St. Louis. *CBOE Volatility Index: VIX (VIXCLS)*. FRED. <https://fred.stlouisfed.org/series/VIXCLS>
